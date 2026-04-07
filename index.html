@@ -13,41 +13,31 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .logo{text-align:center;margin-bottom:28px}
 .logo h1{font-size:24px;font-weight:600;letter-spacing:2px;background:linear-gradient(135deg,#7c5cfc,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .logo p{color:var(--dim);font-size:13px;margin-top:4px}
-
 .step{display:none;animation:fade .3s ease}.step.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-
 label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px}
 input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0d0d14;color:var(--text);font-size:15px;outline:none;transition:border .2s,box-shadow .2s}
 input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
 input::placeholder{color:#444460}
-
 .phone-row{display:flex;gap:8px}
 .phone-row .prefix{width:72px;text-align:center;flex-shrink:0}
 .phone-row .phone{flex:1}
-
 .btn{width:100%;padding:12px;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;background:var(--accent);color:#fff;transition:opacity .2s,transform .1s;margin-top:16px}
 .btn:hover{opacity:.9}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-row{display:flex;gap:8px;margin-top:16px}
 .btn-row .btn{margin-top:0}.btn-row .send-btn{width:120px;flex-shrink:0;padding:12px 8px;font-size:13px}
 .btn-row .verify-btn{flex:1}
-
 .msg{text-align:center;font-size:13px;margin-top:12px;min-height:20px}
 .msg.ok{color:var(--ok)}.msg.err{color:var(--err)}
-
 .result-box{background:#0d0d14;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px;word-break:break-all;font-family:monospace;font-size:12px;color:var(--ok);max-height:260px;overflow-y:auto;white-space:pre-wrap}
 .result-label{font-size:12px;color:var(--dim);margin-bottom:6px}
 .copy-btn{margin-top:8px;padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--dim);cursor:pointer;font-size:12px;transition:border .2s,color .2s}
 .copy-btn:hover{border-color:var(--accent);color:var(--text)}
-
 .back{display:inline-block;margin-top:16px;color:var(--dim);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .back:hover{color:var(--text)}
-
 .spin{display:inline-block;width:16px;height:16px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
-
-#captcha-box{margin-top:16px;min-height:60px}
-#captcha-box .tip{font-size:12px;color:var(--dim);text-align:center;padding:12px;border:1px dashed var(--border);border-radius:8px}
+#captcha-container{min-height:10px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -55,25 +45,25 @@ input::placeholder{color:#444460}
   <div class="card">
     <div class="logo"><h1>NIETA</h1><p>远程登录</p></div>
 
-    <!-- Step 1: Phone + Captcha -->
+    <!-- Step 1: Phone -->
     <div class="step active" id="stepPhone">
       <label>手机号</label>
       <div class="phone-row">
-        <input class="prefix" value="+86" id="prefix" readonly>
+        <input class="prefix" value="+86" readonly>
         <input class="phone" id="phone" placeholder="输入手机号" maxlength="11">
       </div>
-      <div id="captcha-box"><div class="tip">点击下方按钮进行人机验证</div></div>
-      <button class="btn" id="sendBtn" onclick="sendCode()">发送验证码</button>
+      <div id="captcha-container"></div>
+      <button class="btn" id="sendBtn" onclick="handleSend()">发送验证码</button>
       <div class="msg" id="phoneMsg"></div>
     </div>
 
-    <!-- Step 2: Code -->
+    <!-- Step 2: Verify Code -->
     <div class="step" id="stepCode">
       <label>验证码</label>
-      <input id="code" placeholder="输入 6 位验证码" maxlength="6">
+      <input id="smsCode" placeholder="输入 6 位验证码" maxlength="6">
       <div class="btn-row">
-        <button class="btn send-btn" id="resendBtn" onclick="sendCode()">重新发送</button>
-        <button class="btn verify-btn" id="verifyBtn" onclick="verify()">验证登录</button>
+        <button class="btn send-btn" id="resendBtn" onclick="handleSend()">重新发送</button>
+        <button class="btn verify-btn" id="verifyBtn" onclick="handleVerify()">验证登录</button>
       </div>
       <div class="msg" id="codeMsg"></div>
     </div>
@@ -89,19 +79,19 @@ input::placeholder{color:#444460}
   </div>
 </div>
 
-<script src="https://oss.talesofai.cn/fe_assets/libs/gt4.js"></script>
+<!-- Geetest SDK -->
+<script src="https://static.geetest.com/v4/gt4.js"></script>
 <script>
-const API = ''; // relative path, goes through our proxy
-let phone = '', captchaObj = null, captchaValidate = null;
-let countdown = 0;
+const API = '/api';
+let phone = '', captchaInstance = null, captchaResult = null;
+let countdown = 0, isLoading = false;
 
-// --- Init Geetest CAPTCHA ---
-function initCaptcha() {
+// Initialize Geetest CAPTCHA (ready but not shown)
+function initGeetest() {
   if (typeof initGeetest4 === 'undefined') {
-    document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--err)">极验 SDK 加载失败，请刷新重试</div>';
+    console.error('Geetest SDK failed to load');
     return;
   }
-
   initGeetest4({
     captchaId: 'e000881b946cad6dcc39aa1eb40c80b0',
     product: 'bind',
@@ -110,73 +100,113 @@ function initCaptcha() {
     riskType: 'slide',
     hideSuccess: true,
   }, function(captcha) {
-    captchaObj = captcha;
+    captchaInstance = captcha;
+    // Set up callbacks
     captcha.onSuccess(function() {
-      const result = captcha.getValidate();
-      if (result) {
-        captchaValidate = result.captcha_validate;
-        document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--ok)">✅ 人机验证通过</div>';
-      }
-    }).onReady(function() {
-      document.getElementById('captcha-box').innerHTML = '<div class="tip">✅ 人机验证已就绪，请点击下方按钮发送验证码</div>';
-    }).onError(function() {
-      document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--err)">验证出错，请点击按钮重试</div>';
-      captchaValidate = null;
+      captchaResult = captcha.getValidate();
     });
+    captcha.onError(function() {
+      captchaResult = null;
+      showMsg('phoneMsg', '人机验证出错，请重试', 'err');
+      isLoading = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('sendBtn').textContent = '发送验证码';
+    });
+    captcha.onClose(function() {
+      captchaResult = null;
+      isLoading = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('sendBtn').textContent = '发送验证码';
+    });
+    console.log('Geetest initialized');
   });
 }
 
-function showCaptchaModal() {
-  if (!captchaObj) return;
-  captchaValidate = null;
-  captchaObj.showCaptcha();
-}
-
-// --- Send Verification Code ---
-async function sendCode() {
-  if (countdown > 0) return;
-
-  const p = document.getElementById('phone').value.trim();
-  if (!/^\d{11}$/.test(p)) { showMsg('phoneMsg', '请输入正确的 11 位手机号', 'err'); return; }
-
-  if (!captchaValidate) {
-    if (captchaObj) {
-      showCaptchaModal();
-      // Wait for user to complete captcha
-      await waitForCaptcha();
-      if (!captchaValidate) { showMsg('phoneMsg', '请完成人机验证', 'err'); return; }
-    } else {
-      showMsg('phoneMsg', '验证码组件未加载，请刷新页面', 'err');
-      return;
-    }
+async function handleSend() {
+  if (isLoading) return;
+  if (countdown > 0) {
+    // User clicked resend during countdown
+    await doSendCode();
+    return;
   }
 
+  const p = document.getElementById('phone').value.trim();
+  if (!/^\d{11}$/.test(p)) {
+    showMsg('phoneMsg', '请输入正确的 11 位手机号', 'err');
+    return;
+  }
   phone = p;
+
+  // Reset captcha result
+  captchaResult = null;
+  isLoading = true;
+
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>发送中';
+  btn.textContent = '验证中...';
+  showMsg('phoneMsg', '', '');
+
+  // Show Geetest CAPTCHA
+  if (captchaInstance) {
+    captchaInstance.showCaptcha();
+    // Wait for user to complete CAPTCHA
+    await waitForCaptcha();
+  } else {
+    showMsg('phoneMsg', '人机验证组件未加载，请刷新页面重试', 'err');
+    isLoading = false;
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+    return;
+  }
+
+  if (!captchaResult) {
+    showMsg('phoneMsg', '请完成人机验证', 'err');
+    isLoading = false;
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+    return;
+  }
+
+  await doSendCode();
+}
+
+async function doSendCode() {
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.textContent = '发送中...';
   showMsg('phoneMsg', '', '');
 
   try {
-    const res = await fetch('/api/user/request-verification-code', {
+    const resp = await fetch(API + '/user/request-verification-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phone_num: phone,
-        captcha_validate: captchaValidate,
+        captcha_validate: captchaResult,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || data.message || '发送失败');
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data.detail || data.message || JSON.stringify(data));
+    }
+
     showMsg('phoneMsg', '验证码已发送，请查收短信', 'ok');
     showStep('stepCode');
     startCountdown(60);
   } catch (e) {
     showMsg('phoneMsg', '发送失败: ' + e.message, 'err');
-    captchaValidate = null;
   } finally {
+    isLoading = false;
     btn.disabled = false;
     btn.textContent = '发送验证码';
+    captchaResult = null;
+    // Destroy old captcha instance and reinit
+    if (captchaInstance) {
+      try { captchaInstance.destroy(); } catch(e) {}
+      captchaInstance = null;
+    }
+    initGeetest();
   }
 }
 
@@ -184,12 +214,12 @@ function waitForCaptcha() {
   return new Promise(resolve => {
     let waited = 0;
     const check = setInterval(() => {
-      waited += 200;
-      if (captchaValidate || waited > 60000) {
+      waited += 100;
+      if (captchaResult || waited > 120000) {
         clearInterval(check);
         resolve();
       }
-    }, 200);
+    }, 100);
   });
 }
 
@@ -200,15 +230,22 @@ function startCountdown(sec) {
   btn.textContent = countdown + 's';
   const t = setInterval(() => {
     countdown--;
-    if (countdown <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = '重新发送'; }
-    else btn.textContent = countdown + 's';
+    if (countdown <= 0) {
+      clearInterval(t);
+      btn.disabled = false;
+      btn.textContent = '重新发送';
+    } else {
+      btn.textContent = countdown + 's';
+    }
   }, 1000);
 }
 
-// --- Verify Login ---
-async function verify() {
-  const code = document.getElementById('code').value.trim();
-  if (!/^\d{4,6}$/.test(code)) { showMsg('codeMsg', '请输入 4-6 位验证码', 'err'); return; }
+async function handleVerify() {
+  const code = document.getElementById('smsCode').value.trim();
+  if (!/^\d{4,6}$/.test(code)) {
+    showMsg('codeMsg', '请输入 4-6 位验证码', 'err');
+    return;
+  }
   showMsg('codeMsg', '', '');
 
   const btn = document.getElementById('verifyBtn');
@@ -216,14 +253,15 @@ async function verify() {
   btn.innerHTML = '<span class="spin"></span>验证中';
 
   try {
-    const res = await fetch('/api/user/verify-with-phone-num', {
+    const resp = await fetch(API + '/user/verify-with-phone-num', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone_num: phone, code: code }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || data.message || '验证失败');
-
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data.detail || data.message || '验证失败');
+    }
     document.getElementById('resultData').textContent = JSON.stringify(data, null, 2);
     showStep('stepResult');
   } catch (e) {
@@ -234,44 +272,51 @@ async function verify() {
   }
 }
 
-// --- Helpers ---
 function showStep(id) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
+
 function showMsg(id, text, cls) {
   const el = document.getElementById(id);
   el.textContent = text;
   el.className = 'msg ' + cls;
 }
+
 function reset() {
   document.getElementById('phone').value = '';
-  document.getElementById('code').value = '';
-  captchaValidate = null;
-  document.getElementById('captcha-box').innerHTML = '<div class="tip">点击下方按钮进行人机验证</div>';
+  document.getElementById('smsCode').value = '';
+  captchaResult = null;
   showMsg('phoneMsg', '', '');
   showMsg('codeMsg', '', '');
+  countdown = 0;
   showStep('stepPhone');
+  // Reinit captcha
+  if (captchaInstance) {
+    try { captchaInstance.destroy(); } catch(e) {}
+    captchaInstance = null;
+  }
+  setTimeout(initGeetest, 300);
 }
+
 function copyToken() {
-  const text = document.getElementById('resultData').textContent;
   try {
-    const obj = JSON.parse(text);
-    const token = obj.token || obj.access_token || text;
+    const obj = JSON.parse(document.getElementById('resultData').textContent);
+    const token = obj.token || obj.access_token || document.getElementById('resultData').textContent;
     navigator.clipboard.writeText(token).then(() => {
       const btn = document.querySelector('.copy-btn');
       btn.textContent = '✅ 已复制';
       setTimeout(() => btn.textContent = '📋 复制 Token', 2000);
     });
   } catch {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(document.getElementById('resultData').textContent);
   }
 }
 
-document.getElementById('phone').addEventListener('keydown', e => { if (e.key === 'Enter') sendCode(); });
-document.getElementById('code').addEventListener('keydown', e => { if (e.key === 'Enter') verify(); });
+document.getElementById('phone').addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
+document.getElementById('smsCode').addEventListener('keydown', e => { if (e.key === 'Enter') handleVerify(); });
 
-window.addEventListener('load', initCaptcha);
+window.addEventListener('load', initGeetest);
 </script>
 </body>
 </html>
