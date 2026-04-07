@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NIETA 登录</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--card:#12121a;--border:#2a2a3a;--accent:#7c5cfc;--glow:#7c5cfc33;--text:#e0e0e8;--dim:#666680;--ok:#34d399;--err:#f87171}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse at 50% 0%,#7c5cfc11 0%,transparent 60%)}
+.container{width:100%;max-width:420px;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 24px;box-shadow:0 0 40px var(--glow)}
+.logo{text-align:center;margin-bottom:28px}
+.logo h1{font-size:24px;font-weight:600;letter-spacing:2px;background:linear-gradient(135deg,#7c5cfc,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo p{color:var(--dim);font-size:13px;margin-top:4px}
+
+.step{display:none;animation:fade .3s ease}.step.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0d0d14;color:var(--text);font-size:15px;outline:none;transition:border .2s,box-shadow .2s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+input::placeholder{color:#444460}
+
+.phone-row{display:flex;gap:8px}
+.phone-row .prefix{width:72px;text-align:center;flex-shrink:0}
+.phone-row .phone{flex:1}
+
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;background:var(--accent);color:#fff;transition:opacity .2s,transform .1s;margin-top:16px}
+.btn:hover{opacity:.9}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn-row .btn{margin-top:0}.btn-row .send-btn{width:120px;flex-shrink:0;padding:12px 8px;font-size:13px}
+.btn-row .verify-btn{flex:1}
+
+.msg{text-align:center;font-size:13px;margin-top:12px;min-height:20px}
+.msg.ok{color:var(--ok)}.msg.err{color:var(--err)}
+
+.result-box{background:#0d0d14;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px;word-break:break-all;font-family:monospace;font-size:12px;color:var(--ok);max-height:260px;overflow-y:auto;white-space:pre-wrap}
+.result-label{font-size:12px;color:var(--dim);margin-bottom:6px}
+.copy-btn{margin-top:8px;padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--dim);cursor:pointer;font-size:12px;transition:border .2s,color .2s}
+.copy-btn:hover{border-color:var(--accent);color:var(--text)}
+
+.back{display:inline-block;margin-top:16px;color:var(--dim);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.back:hover{color:var(--text)}
+
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+#captcha-box{margin-top:16px;min-height:60px}
+#captcha-box .tip{font-size:12px;color:var(--dim);text-align:center;padding:12px;border:1px dashed var(--border);border-radius:8px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="logo"><h1>NIETA</h1><p>远程登录</p></div>
+
+    <!-- Step 1: Phone + Captcha -->
+    <div class="step active" id="stepPhone">
+      <label>手机号</label>
+      <div class="phone-row">
+        <input class="prefix" value="+86" id="prefix" readonly>
+        <input class="phone" id="phone" placeholder="输入手机号" maxlength="11">
+      </div>
+      <div id="captcha-box"><div class="tip">点击下方按钮进行人机验证</div></div>
+      <button class="btn" id="sendBtn" onclick="sendCode()">发送验证码</button>
+      <div class="msg" id="phoneMsg"></div>
+    </div>
+
+    <!-- Step 2: Code -->
+    <div class="step" id="stepCode">
+      <label>验证码</label>
+      <input id="code" placeholder="输入 6 位验证码" maxlength="6">
+      <div class="btn-row">
+        <button class="btn send-btn" id="resendBtn" onclick="sendCode()">重新发送</button>
+        <button class="btn verify-btn" id="verifyBtn" onclick="verify()">验证登录</button>
+      </div>
+      <div class="msg" id="codeMsg"></div>
+    </div>
+
+    <!-- Step 3: Token Result -->
+    <div class="step" id="stepResult">
+      <div class="result-label">✅ 登录成功</div>
+      <div class="result-box" id="resultData"></div>
+      <button class="copy-btn" onclick="copyToken()">📋 复制 Token</button>
+      <br>
+      <span class="back" onclick="reset()">重新登录</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://oss.talesofai.cn/fe_assets/libs/gt4.js"></script>
+<script>
+const API = ''; // relative path, goes through our proxy
+let phone = '', captchaObj = null, captchaValidate = null;
+let countdown = 0;
+
+// --- Init Geetest CAPTCHA ---
+function initCaptcha() {
+  if (typeof initGeetest4 === 'undefined') {
+    document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--err)">极验 SDK 加载失败，请刷新重试</div>';
+    return;
+  }
+
+  initGeetest4({
+    captchaId: 'e000881b946cad6dcc39aa1eb40c80b0',
+    product: 'bind',
+    protocol: 'https://',
+    lang: 'zh-cn',
+    riskType: 'slide',
+    hideSuccess: true,
+  }, function(captcha) {
+    captchaObj = captcha;
+    captcha.onSuccess(function() {
+      const result = captcha.getValidate();
+      if (result) {
+        captchaValidate = result.captcha_validate;
+        document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--ok)">✅ 人机验证通过</div>';
+      }
+    }).onReady(function() {
+      document.getElementById('captcha-box').innerHTML = '<div class="tip">✅ 人机验证已就绪，请点击下方按钮发送验证码</div>';
+    }).onError(function() {
+      document.getElementById('captcha-box').innerHTML = '<div class="tip" style="color:var(--err)">验证出错，请点击按钮重试</div>';
+      captchaValidate = null;
+    });
+  });
+}
+
+function showCaptchaModal() {
+  if (!captchaObj) return;
+  captchaValidate = null;
+  captchaObj.showCaptcha();
+}
+
+// --- Send Verification Code ---
+async function sendCode() {
+  if (countdown > 0) return;
+
+  const p = document.getElementById('phone').value.trim();
+  if (!/^\d{11}$/.test(p)) { showMsg('phoneMsg', '请输入正确的 11 位手机号', 'err'); return; }
+
+  if (!captchaValidate) {
+    if (captchaObj) {
+      showCaptchaModal();
+      // Wait for user to complete captcha
+      await waitForCaptcha();
+      if (!captchaValidate) { showMsg('phoneMsg', '请完成人机验证', 'err'); return; }
+    } else {
+      showMsg('phoneMsg', '验证码组件未加载，请刷新页面', 'err');
+      return;
+    }
+  }
+
+  phone = p;
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>发送中';
+  showMsg('phoneMsg', '', '');
+
+  try {
+    const res = await fetch('http://47.254.31.20:8090/api/user/request-verification-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone_num: phone,
+        captcha_validate: captchaValidate,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || data.message || '发送失败');
+    showMsg('phoneMsg', '验证码已发送，请查收短信', 'ok');
+    showStep('stepCode');
+    startCountdown(60);
+  } catch (e) {
+    showMsg('phoneMsg', '发送失败: ' + e.message, 'err');
+    captchaValidate = null;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+  }
+}
+
+function waitForCaptcha() {
+  return new Promise(resolve => {
+    let waited = 0;
+    const check = setInterval(() => {
+      waited += 200;
+      if (captchaValidate || waited > 60000) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 200);
+  });
+}
+
+function startCountdown(sec) {
+  countdown = sec;
+  const btn = document.getElementById('resendBtn');
+  btn.disabled = true;
+  btn.textContent = countdown + 's';
+  const t = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = '重新发送'; }
+    else btn.textContent = countdown + 's';
+  }, 1000);
+}
+
+// --- Verify Login ---
+async function verify() {
+  const code = document.getElementById('code').value.trim();
+  if (!/^\d{4,6}$/.test(code)) { showMsg('codeMsg', '请输入 4-6 位验证码', 'err'); return; }
+  showMsg('codeMsg', '', '');
+
+  const btn = document.getElementById('verifyBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>验证中';
+
+  try {
+    const res = await fetch('http://47.254.31.20:8090/api/user/verify-with-phone-num', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone_num: phone, code: code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || data.message || '验证失败');
+
+    document.getElementById('resultData').textContent = JSON.stringify(data, null, 2);
+    showStep('stepResult');
+  } catch (e) {
+    showMsg('codeMsg', '验证失败: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '验证登录';
+  }
+}
+
+// --- Helpers ---
+function showStep(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showMsg(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + cls;
+}
+function reset() {
+  document.getElementById('phone').value = '';
+  document.getElementById('code').value = '';
+  captchaValidate = null;
+  document.getElementById('captcha-box').innerHTML = '<div class="tip">点击下方按钮进行人机验证</div>';
+  showMsg('phoneMsg', '', '');
+  showMsg('codeMsg', '', '');
+  showStep('stepPhone');
+}
+function copyToken() {
+  const text = document.getElementById('resultData').textContent;
+  try {
+    const obj = JSON.parse(text);
+    const token = obj.token || obj.access_token || text;
+    navigator.clipboard.writeText(token).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = '✅ 已复制';
+      setTimeout(() => btn.textContent = '📋 复制 Token', 2000);
+    });
+  } catch {
+    navigator.clipboard.writeText(text);
+  }
+}
+
+document.getElementById('phone').addEventListener('keydown', e => { if (e.key === 'Enter') sendCode(); });
+document.getElementById('code').addEventListener('keydown', e => { if (e.key === 'Enter') verify(); });
+
+window.addEventListener('load', initCaptcha);
+</script>
+</body>
+</html>
